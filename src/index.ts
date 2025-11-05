@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import process from "node:process";
 import fs from "node:fs/promises";
 import path from "node:path/posix";
@@ -13,16 +11,17 @@ const f = path.join(process.cwd(), ".cajon.js")
 await fs.stat(f);
 const mod = await import(`file://${f}`);
 
-const Module = z.object({
+const module = z.object({
     image: z.string(),
     mountCwd: z.boolean().default(true),
     env: z.object().catchall(z.string()).default({}),
     dockerFlags: z.array(z.string()).default([]),
     command: z.array(z.string()).optional(),
     script: z.string().optional(),
-})
+    volumes: z.array(z.string()).default([]),
+});
 
-const config = Module.parse(mod.default);
+const config = module.parse(mod.default);
 console.log(config);
 
 const envFlags = Object.entries(config.env).map(([k, v]) => {
@@ -37,7 +36,7 @@ if (config.command !== undefined) {
     commandFlags = ["bash", "-lc",
         `${config.script}
 
-exec bash
+exec $SHELL
 `
     ];
 } else {
@@ -61,6 +60,7 @@ const cmd = [
     ...envFlags,
     ...mountCwdFlags,
     ...config.dockerFlags,
+    ...(config.volumes.flatMap(x => ["-v", x])),
     config.image,
     ...commandFlags,
 ]
