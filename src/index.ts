@@ -1,22 +1,9 @@
-import { parseArgs } from "@std/cli/parse-args";
 import process from "node:process";
 import fs from "node:fs/promises";
 import path from "node:path/posix";
 import { spawn } from "node:child_process";
 
 import { z } from "zod";
-import assert from "node:assert";
-import { exec } from "node:child_process";
-
-// const args = process.argv.slice(2);
-// console.log(args);
-
-// const a = parseArgs(
-//     args,
-//     {
-//         boolean: ["help"]
-//     }
-// );
 
 
 
@@ -68,6 +55,7 @@ const cmd = [
     "--interactive",
     "--tty",
     "--rm",
+    "--network=host",
     ...envFlags,
     ...mountCwdFlags,
     ...config.dockerFlags,
