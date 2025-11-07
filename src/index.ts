@@ -2,16 +2,46 @@ import process from "node:process";
 import fs from "node:fs/promises";
 import path from "node:path/posix";
 import { spawn } from "node:child_process";
+import styles from 'ansi-styles';
 
 import { z } from "zod";
+import { cli } from "cleye";
+
+const argv = process.argv.slice(2);
+
+const args = cli({
+    flags: {
+        cajonFile: {
+            type: String,
+            description: "Path to the cajonfile",
+            default: ".cajon.js",
+            alias: "c"
+        }
+    }
+})
 
 
+const cajonFile = args.flags.cajonFile;
 
-const f = path.join(process.cwd(), ".cajon.js")
-await fs.stat(f);
-const mod = await import(`file://${f}`);
+const mod = await (async () => {
+    try {
+        let f;
+        if (cajonFile.startsWith("/")) {
+            f = cajonFile;
+        } else {
+            f = path.join(process.cwd(), cajonFile);
+        }
+        await fs.stat(f);
+        return await import(`file://${f}`);
+    } catch (e) {
+        console.log("Error while loading the cajonfile:")
+        console.error(e);
+        process.exit(1);
+    }
+})();
 
-const module = z.object({
+
+const configZ = z.object({
     image: z.string(),
     mountCwd: z.boolean().default(true),
     env: z.object().catchall(z.string()).default({}),
@@ -21,8 +51,7 @@ const module = z.object({
     volumes: z.array(z.string()).default([]),
 });
 
-const config = module.parse(mod.default);
-console.log(config);
+const config = configZ.parse(mod.default);
 
 const envFlags = Object.entries(config.env).map(([k, v]) => {
     return ["-e", `${k}=${v}`]
@@ -51,7 +80,7 @@ const mountCwdFlags = config.mountCwd ? [
 ] : [];
 
 const cmd = [
-    "docker",
+    "podman",
     "run",
     "--interactive",
     "--tty",
@@ -65,7 +94,8 @@ const cmd = [
     ...commandFlags,
 ]
 
-console.log(cmd.join(" "));
+
+process.stderr.write(`${styles.dim.open}$ ${cmd.join(" ")}${styles.reset.open}\n`);
 
 const proc = spawn(cmd[0]!, cmd.slice(1), {
     stdio: "inherit",
