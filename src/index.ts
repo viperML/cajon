@@ -3,11 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path/posix";
 import { spawn } from "node:child_process";
 import styles from 'ansi-styles';
+import which from "which";
 
 import { z } from "zod";
 import { cli } from "cleye";
-
-const argv = process.argv.slice(2);
 
 const args = cli({
     flags: {
@@ -46,58 +45,67 @@ const configZ = z.object({
     mountCwd: z.boolean().default(true),
     env: z.object().catchall(z.string()).default({}),
     dockerFlags: z.array(z.string()).default([]),
-    command: z.array(z.string()).optional(),
-    script: z.string().optional(),
+    cmd: z.array(z.string()).optional(),
+    preScript: z.string().optional(),
     volumes: z.array(z.string()).default([]),
+    workdir: z.string().default("/mnt"),
 });
 
 const config = configZ.parse(mod.default);
 
-const envFlags = Object.entries(config.env).map(([k, v]) => {
-    return ["-e", `${k}=${v}`]
-}).flat();
+const prog = await (async () => {
+    const podman = await which("podman", { nothrow: true, });
+    if (podman !== null) return podman;
+    const docker = await which("docker", { nothrow: true, });
+    if (docker !== null) return docker;
+    console.error("Error: neither podman nor docker was found in PATH.");
+    process.exit(1);
+})();
 
-let commandFlags: string[];
-
-if (config.command !== undefined) {
-    commandFlags = config.command;
-} else if (config.script !== undefined) {
-    commandFlags = ["bash", "-lc",
-        `${config.script}
-
-exec $SHELL
-`
-    ];
-} else {
-    commandFlags = [];
-}
-
-const mountCwdFlags = config.mountCwd ? [
-    "-v",
-    `${process.cwd()}:/mnt`,
-    "--workdir",
-    "/mnt"
-] : [];
-
-const cmd = [
-    "podman",
+const progArgs: string[] = [
     "run",
     "--interactive",
     "--tty",
     "--rm",
     "--network=host",
-    ...envFlags,
-    ...mountCwdFlags,
-    ...config.dockerFlags,
-    ...(config.volumes.flatMap(x => ["-v", x])),
-    config.image,
-    ...commandFlags,
-]
+];
+
+for (const [k, v] of Object.entries(config.env)) {
+    progArgs.push("-e", `${k}=${v}`);
+}
+
+if (config.mountCwd) {
+    progArgs.push(
+        "-v",
+        `${process.cwd()}:/mnt`,
+        "--workdir",
+        config.workdir,
+    );
+}
+
+for (const volume of config.volumes) {
+    progArgs.push(
+        "-v",
+        volume,
+    )
+}
+
+progArgs.push(...config.dockerFlags, config.image);
+
+if (args._.length > 0) {
+    progArgs.push(...args._.map(String));
+} else if (config.cmd) {
+    progArgs.push(...config.cmd);
+} else if (config.preScript) {
+    progArgs.push("bash", "-lc",
+        `${config.preScript}
+exec $SHELL`)
+}
 
 
-process.stderr.write(`${styles.dim.open}$ ${cmd.join(" ")}${styles.reset.open}\n`);
+process.stderr.write(`${styles.dim.open}$ ${prog} ${progArgs.join(" ")}${styles.reset.open}\n`);
 
-const proc = spawn(cmd[0]!, cmd.slice(1), {
+const proc = spawn(prog, progArgs, {
     stdio: "inherit",
 });
 
