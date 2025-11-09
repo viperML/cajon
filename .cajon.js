@@ -4,5 +4,5 @@ export default {
     env: {
         FOO: "bar"
     },
-    preScript: "pwd"
+    // preScript: "pwd"
 }
