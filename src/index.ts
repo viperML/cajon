@@ -62,9 +62,7 @@ const configZ = z.object({
     preScript: z.string().optional(),
     volumes: z.array(z.string()).default([]),
     workdir: z.string().default("/mnt"),
-    name: z.string().default(
-        `cajon--${basename(process.cwd())}`
-    )
+    name: z.string().default(`cajon--${basename(process.cwd())}`)
 });
 
 const config = configZ.parse(mod.default);
@@ -79,20 +77,27 @@ const prog = await (async () => {
     }
 })();
 
-
 const running = await container.isRunning(prog, config.name);
 
 if (running) {
-    console.info(`A container with the same name is already running. Attach with the following command:`);
-    process.stdout.write(`${styles.bold.open}${basename(prog)} exec -it ${config.name} bash\n`);
+    console.info(
+        `A container with the same name is already running. Attach with the following command:`
+    );
+    process.stdout.write(
+        `${styles.bold.open}${basename(prog)} exec -it ${config.name} bash\n`
+    );
     exit(0);
 }
 
 const tini = args.flags.background ? await getTini() : undefined;
 
-
-
-const progArgs: string[] = ["run", "--name", config.name, "--rm", "--network=host"];
+const progArgs: string[] = [
+    "run",
+    "--name",
+    config.name,
+    "--rm",
+    "--network=host"
+];
 
 if (tini !== undefined) {
     progArgs.push("-d", "-v", `${tini}:/tini:ro`);
@@ -134,7 +139,6 @@ exec $SHELL`
 process.stderr.write(
     `${styles.dim.open}$ ${basename(prog)} ${progArgs.join(" ")}${styles.reset.open}\n`
 );
-
 
 if (!args.flags.dry) {
     const proc = spawn(prog, progArgs, {

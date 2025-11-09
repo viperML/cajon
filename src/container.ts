@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import which from "which";
 
-
 export async function getProg(): Promise<string | undefined> {
     const podman = await which("podman", { nothrow: true });
     if (podman !== null) return podman;
@@ -12,7 +11,11 @@ export async function getProg(): Promise<string | undefined> {
 
 export async function isRunning(prog: string, name: string) {
     return new Promise<boolean>((resolve) => {
-        const inspect = spawn(prog, ["container", "inspect", name, "--format", "{{.State.Running}}"], { stdio: "pipe" });
+        const inspect = spawn(
+            prog,
+            ["container", "inspect", name, "--format", "{{.State.Running}}"],
+            { stdio: "pipe" }
+        );
         let output = "";
         inspect.stdout.on("data", (data) => {
             output += data.toString();

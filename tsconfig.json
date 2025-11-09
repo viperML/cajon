@@ -4,7 +4,7 @@
         "moduleResolution": "nodenext",
         "module": "nodenext",
         "outDir": "dist",
-        "noUnusedLocals": false,
+        "noUnusedLocals": false
     },
     "include": ["src/**/*.ts"]
 }
