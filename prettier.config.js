@@ -5,6 +5,10 @@
 const config = {
     trailingComma: "none",
     tabWidth: 4,
+    plugins: ["@trivago/prettier-plugin-sort-imports"],
+    importOrder: ["^node:", "<THIRD_PARTY_MODULES>", "^[./]"],
+    importOrderSeparation: true,
+    importOrderSortSpecifiers: true,
     overrides: [
         {
             files: "package-lock.json",

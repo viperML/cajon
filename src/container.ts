@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+
 import which from "which";
 
 export async function getProg(): Promise<string | undefined> {

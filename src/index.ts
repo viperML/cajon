@@ -1,14 +1,15 @@
-import process, { exit } from "node:process";
-import fs from "node:fs/promises";
-import path from "node:path/posix";
 import { spawn } from "node:child_process";
-import styles from "ansi-styles";
-import which from "which";
-import * as container from "./container.js";
+import fs from "node:fs/promises";
 import { basename } from "node:path";
+import path from "node:path/posix";
+import process, { exit } from "node:process";
 
-import { z } from "zod";
+import c from "ansi-colors";
 import { cli } from "cleye";
+import { z } from "zod";
+
+import * as container from "./container.js";
+import { logError, logInfo } from "./log.js";
 import { getTini } from "./tini.js";
 
 const args = cli({
@@ -47,9 +48,8 @@ const mod = await (async () => {
         await fs.stat(f);
         return await import(`file://${f}`);
     } catch (e) {
-        console.log("Error while loading the cajonfile:");
-        console.error(e);
-        process.exit(1);
+        logError("Error while loading the cajonFile:");
+        (console.log(e), process.exit(1));
     }
 })();
 
@@ -70,7 +70,7 @@ const config = configZ.parse(mod.default);
 const prog = await (async () => {
     const prog = await container.getProg();
     if (prog === undefined) {
-        console.error("Error: neither podman nor docker was found in PATH.");
+        logError("Error: neither podman nor docker was found in PATH.");
         process.exit(1);
     } else {
         return prog;
@@ -80,12 +80,10 @@ const prog = await (async () => {
 const running = await container.isRunning(prog, config.name);
 
 if (running) {
-    console.info(
+    logInfo(
         `A container with the same name is already running. Attach with the following command:`
     );
-    process.stdout.write(
-        `${styles.bold.open}${basename(prog)} exec -it ${config.name} bash\n`
-    );
+    process.stderr.write(c.bold(`${basename(prog)} exec -it ${config.name}`));
     exit(0);
 }
 
@@ -136,9 +134,8 @@ exec $SHELL`
     }
 }
 
-process.stderr.write(
-    `${styles.dim.open}$ ${basename(prog)} ${progArgs.join(" ")}${styles.reset.open}\n`
-);
+logInfo("Loading cajon");
+logInfo(c.dim(`${basename(prog)} ${progArgs.join(" ")}`));
 
 if (!args.flags.dry) {
     const proc = spawn(prog, progArgs, {
@@ -151,10 +148,10 @@ if (!args.flags.dry) {
 }
 
 if (args.flags.background) {
-    process.stderr.write(
+    logInfo(
         `Container started in background. Attach with the following command:`
     );
-    process.stdout.write(
-        `${styles.bold.open}${basename(prog)} exec -it ${config.name} bash${styles.bold.close}\n`
+    process.stderr.write(
+        c.bold(`${basename(prog)} exec -it ${config.name} bash\n`)
     );
 }

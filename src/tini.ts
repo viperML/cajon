@@ -1,5 +1,6 @@
-import { mkdir, stat } from "fs/promises";
-import { createWriteStream } from "fs";
+import { createWriteStream } from "node:fs";
+import { mkdir, stat } from "node:fs/promises";
+
 import path from "path";
 
 const DOWNLOAD_URL = new URL(
