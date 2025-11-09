@@ -3,7 +3,7 @@
 
 /** @type {import("prettier").Config} */
 const config = {
-    trailingComma: "none",
+    trailingComma: "all",
     tabWidth: 4,
     plugins: ["@trivago/prettier-plugin-sort-imports"],
     importOrder: ["^node:", "<THIRD_PARTY_MODULES>", "^[./]"],
@@ -13,10 +13,10 @@ const config = {
         {
             files: "package-lock.json",
             options: {
-                requirePragma: true
-            }
-        }
-    ]
+                requirePragma: true,
+            },
+        },
+    ],
 };
 
 export default config;

@@ -4,7 +4,7 @@ import { mkdir, stat } from "node:fs/promises";
 import path from "path";
 
 const DOWNLOAD_URL = new URL(
-    "https://github.com/krallin/tini/releases/download/v0.19.0/tini-static-amd64"
+    "https://github.com/krallin/tini/releases/download/v0.19.0/tini-static-amd64",
 );
 
 export async function getTini(): Promise<string> {
@@ -30,7 +30,7 @@ export async function getTini(): Promise<string> {
         const res = await fetch(DOWNLOAD_URL);
         if (!res.ok) {
             throw new Error(
-                `Failed to download tini: ${res.status} ${res.statusText}`
+                `Failed to download tini: ${res.status} ${res.statusText}`,
             );
         }
 

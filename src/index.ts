@@ -18,21 +18,28 @@ const args = cli({
             type: String,
             description: "Path to the cajonfile",
             default: ".cajon.js",
-            alias: "c"
+            alias: "c",
         },
         background: {
             type: Boolean,
             description: "Launch the container in the background",
             default: false,
-            alias: "b"
+            alias: "b",
         },
         dry: {
             type: Boolean,
             description: "Only print the command to be ran",
             default: false,
-            alias: "n"
-        }
-    }
+            alias: "n",
+        },
+        reattach: {
+            type: Boolean,
+            description:
+                "If used with --background, also reattach to the background container",
+            default: false,
+            alias: "r",
+        },
+    },
 });
 
 const cajonFile = args.flags.cajonFile;
@@ -62,7 +69,7 @@ const configZ = z.object({
     preScript: z.string().optional(),
     volumes: z.array(z.string()).default([]),
     workdir: z.string().default("/mnt"),
-    name: z.string().default(`cajon--${basename(process.cwd())}`)
+    name: z.string().default(`cajon--${basename(process.cwd())}`),
 });
 
 const config = configZ.parse(mod.default);
@@ -79,11 +86,39 @@ const prog = await (async () => {
 
 const running = await container.isRunning(prog, config.name);
 
+const reattachArgs = ["exec", "--interactive", "--tty", config.name, "bash"];
+
+async function _reattach(): Promise<never> {
+    logInfo("Reattaching to the running container");
+    const reattachProc = spawn(prog, reattachArgs, {
+        stdio: "inherit",
+    });
+
+    reattachProc.on("exit", (code: number | null) => {
+        exit(code ?? 0);
+    });
+
+    // Wait for child
+    await new Promise<void>((resolve) => {
+        reattachProc.on("close", () => {
+            resolve();
+        });
+    });
+
+    throw new Error("Reattach failed");
+}
+
 if (running) {
-    logInfo(
-        `A container with the same name is already running. Attach with the following command:`
-    );
-    process.stderr.write(c.bold(`${basename(prog)} exec -it ${config.name}`));
+    if (args.flags.reattach) {
+        await _reattach();
+    } else {
+        logInfo(
+            `A container with the same name is already running. Attach with the following command, or use cajon --reattach:`,
+        );
+        process.stderr.write(
+            c.bold(`${basename(prog)} ${reattachArgs.join(" ")}`),
+        );
+    }
     exit(0);
 }
 
@@ -94,7 +129,7 @@ const progArgs: string[] = [
     "--name",
     config.name,
     "--rm",
-    "--network=host"
+    "--network=host",
 ];
 
 if (tini !== undefined) {
@@ -129,7 +164,7 @@ if (tini !== undefined) {
             "bash",
             "-lc",
             `${config.preScript}
-exec $SHELL`
+exec $SHELL`,
         );
     }
 }
@@ -139,19 +174,30 @@ logInfo(c.dim(`${basename(prog)} ${progArgs.join(" ")}`));
 
 if (!args.flags.dry) {
     const proc = spawn(prog, progArgs, {
-        stdio: "inherit"
+        stdio: "inherit",
     });
 
-    proc.on("exit", (code: number | null) => {
-        process.exit(code ?? 0);
+    // proc.on("exit", (code: number | null) => {
+    //     process.exit(code ?? 0);
+    // });
+
+    // Wait for child
+    await new Promise<void>((resolve) => {
+        proc.on("close", () => {
+            resolve();
+        });
     });
 }
 
 if (args.flags.background) {
-    logInfo(
-        `Container started in background. Attach with the following command:`
-    );
-    process.stderr.write(
-        c.bold(`${basename(prog)} exec -it ${config.name} bash\n`)
-    );
+    if (args.flags.reattach) {
+        await _reattach();
+    } else {
+        logInfo(
+            `Container started in background. Attach with the following command:`,
+        );
+        process.stderr.write(
+            c.bold(`${basename(prog)} exec -it ${config.name} bash\n`),
+        );
+    }
 }

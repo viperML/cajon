@@ -1,7 +1,7 @@
 export default {
     image: "debian",
     env: {
-        FOO: "bar"
-    }
+        FOO: "bar",
+    },
     // preScript: "pwd"
 };

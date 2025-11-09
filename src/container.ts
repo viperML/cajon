@@ -15,7 +15,7 @@ export async function isRunning(prog: string, name: string) {
         const inspect = spawn(
             prog,
             ["container", "inspect", name, "--format", "{{.State.Running}}"],
-            { stdio: "pipe" }
+            { stdio: "pipe" },
         );
         let output = "";
         inspect.stdout.on("data", (data) => {

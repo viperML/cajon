@@ -11,7 +11,7 @@ but I didn't like its DX.
 // .cajon.js
 export default {
     image: "debian",
-    script: `echo Hello!`
+    script: `echo Hello!`,
 };
 
 /**
