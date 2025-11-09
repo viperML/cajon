@@ -149,3 +149,10 @@ if (!args.flags.dry) {
         process.exit(code ?? 0);
     });
 }
+
+if (args.flags.background) {
+    process.stderr.write(`Container started in background. Attach with the following command:`)
+    process.stdout.write(
+        `${styles.bold.open}${basename(prog)} exec -it ${config.name} bash${styles.bold.close}\n`
+    );
+}
