@@ -31,13 +31,6 @@ const args = cli({
             default: false,
             alias: "n",
         },
-        reattach: {
-            type: Boolean,
-            description:
-                "If used with --background, also reattach to the background container",
-            default: false,
-            alias: "r",
-        },
     },
 });
 
@@ -89,6 +82,7 @@ const reattachArgs = ["exec", "--interactive", "--tty", config.name, "bash"];
 
 async function _reattach(): Promise<never> {
     logInfo("Reattaching to the running container");
+    logInfo(c.dim(`${basename(prog)} ${reattachArgs.join(" ")}`))
     const reattachProc = spawn(prog, reattachArgs, {
         stdio: "inherit",
     });
@@ -108,17 +102,7 @@ async function _reattach(): Promise<never> {
 }
 
 if (running) {
-    if (args.flags.reattach) {
-        await _reattach();
-    } else {
-        logInfo(
-            `A container with the same name is already running. Attach with the following command, or use cajon --reattach:`,
-        );
-        process.stderr.write(
-            c.bold(`${basename(prog)} ${reattachArgs.join(" ")}`),
-        );
-    }
-    exit(0);
+    await _reattach();
 }
 
 const progArgs: string[] = [
@@ -158,7 +142,7 @@ for (const volume of config.volumes) {
 progArgs.push(...config.dockerFlags, config.image);
 
 if (args.flags.background) {
-    progArgs.push("tail", "--", "-f", "/dev/null");
+    progArgs.push("tail", "-f", "/dev/null");
 } else {
     if (args._.length > 0) {
         progArgs.push(...args._.map(String));
@@ -195,14 +179,5 @@ if (!args.flags.dry) {
 }
 
 if (args.flags.background) {
-    if (args.flags.reattach) {
-        await _reattach();
-    } else {
-        logInfo(
-            `Container started in background. Attach with the following command:`,
-        );
-        process.stderr.write(
-            c.bold(`${basename(prog)} exec -it ${config.name} bash\n`),
-        );
-    }
+    await _reattach();
 }
