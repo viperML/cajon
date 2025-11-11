@@ -144,7 +144,7 @@ if (config.mountCwd) {
     if (config.workdir === undefined) {
         throw new Error(`workdir must be set if mountCwd is true`);
     }
-    progArgs.push("-v", `${process.cwd()}:/${config.workdir}`);
+    progArgs.push("-v", `${process.cwd()}:${config.workdir}`);
 }
 
 if (config.workdir !== undefined) {
