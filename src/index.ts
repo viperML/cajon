@@ -10,7 +10,6 @@ import { z } from "zod";
 
 import * as container from "./container.js";
 import { logError, logInfo } from "./log.js";
-import { getTini } from "./tini.js";
 
 const args = cli({
     flags: {
@@ -68,7 +67,7 @@ const configZ = z.object({
     cmd: z.array(z.string()).optional(),
     preScript: z.string().optional(),
     volumes: z.array(z.string()).default([]),
-    workdir: z.string().default("/mnt"),
+    workdir: z.string().optional().default("/mnt"),
     name: z.string().default(`cajon--${basename(process.cwd())}`),
 });
 
@@ -122,18 +121,17 @@ if (running) {
     exit(0);
 }
 
-const tini = args.flags.background ? await getTini() : undefined;
-
 const progArgs: string[] = [
     "run",
     "--name",
     config.name,
     "--rm",
     "--network=host",
+    "--init",
 ];
 
-if (tini !== undefined) {
-    progArgs.push("-d", "-v", `${tini}:/tini:ro`);
+if (args.flags.background) {
+    progArgs.push("--detach");
 } else {
     progArgs.push("--interactive", "--tty");
 }
@@ -143,7 +141,14 @@ for (const [k, v] of Object.entries(config.env)) {
 }
 
 if (config.mountCwd) {
-    progArgs.push("-v", `${process.cwd()}:/mnt`, "--workdir", config.workdir);
+    if (config.workdir === undefined) {
+        throw new Error(`workdir must be set if mountCwd is true`);
+    }
+    progArgs.push("-v", `${process.cwd()}:/${config.workdir}`);
+}
+
+if (config.workdir !== undefined) {
+    progArgs.push("--workdir", config.workdir);
 }
 
 for (const volume of config.volumes) {
@@ -152,8 +157,8 @@ for (const volume of config.volumes) {
 
 progArgs.push(...config.dockerFlags, config.image);
 
-if (tini !== undefined) {
-    progArgs.push("/tini", "tail", "--", "-f", "/dev/null");
+if (args.flags.background) {
+    progArgs.push("tail", "--", "-f", "/dev/null");
 } else {
     if (args._.length > 0) {
         progArgs.push(...args._.map(String));
