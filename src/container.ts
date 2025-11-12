@@ -1,6 +1,9 @@
-import { spawn } from "node:child_process";
+import assert from "node:assert";
 
 import which from "which";
+import { z } from "zod";
+
+import { runCapture } from "./subprocess.js";
 
 export async function getProg(): Promise<string | undefined> {
     const podman = await which("podman", { nothrow: true });
@@ -10,23 +13,39 @@ export async function getProg(): Promise<string | undefined> {
     return undefined;
 }
 
-export async function isRunning(prog: string, name: string) {
-    return new Promise<boolean>((resolve) => {
-        const inspect = spawn(
-            prog,
-            ["container", "inspect", name, "--format", "{{.State.Running}}"],
-            { stdio: "pipe" },
-        );
-        let output = "";
-        inspect.stdout.on("data", (data) => {
-            output += data.toString();
-        });
-        inspect.on("close", (code) => {
-            if (code === 0) {
-                resolve(output.trim() === "true");
-            } else {
-                resolve(false);
-            }
-        });
-    });
+const inspectedContainer = z.object({
+    State: z.object({
+        Running: z.boolean(),
+    }),
+    Config: z.object({
+        Annotations: z.object({
+            "cajon.background": z
+                .enum(["TRUE", "FALSE"])
+                .transform((val) => val === "TRUE"),
+        }),
+    }),
+});
+
+export type InspectedContainer = z.infer<typeof inspectedContainer>;
+
+export async function inspectContainer(
+    prog: string,
+    name: string,
+): Promise<"not-found" | InspectedContainer> {
+    const { stdout, exit } = await runCapture(prog, [
+        "container",
+        "inspect",
+        name,
+        "--format",
+        "json",
+    ]);
+
+    if (exit !== 0) {
+        return "not-found";
+    } else {
+        const j = JSON.parse(stdout);
+        const parsed = z.array(inspectedContainer).parse(j).at(0);
+        assert(parsed !== undefined);
+        return parsed;
+    }
 }

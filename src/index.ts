@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import { basename } from "node:path";
 import path from "node:path/posix";
@@ -9,7 +8,8 @@ import { cli } from "cleye";
 import { z } from "zod";
 
 import * as container from "./container.js";
-import { logError, logInfo } from "./log.js";
+import { logCmd, logError, logInfo } from "./log.js";
+import { exec, run } from "./subprocess.js";
 
 const args = cli({
     flags: {
@@ -25,11 +25,12 @@ const args = cli({
             default: false,
             alias: "b",
         },
-        dry: {
+        replace: {
             type: Boolean,
-            description: "Only print the command to be ran",
+            description:
+                "Stop and wipe the container, if it was already created",
             default: false,
-            alias: "n",
+            alias: "r",
         },
     },
 });
@@ -62,6 +63,7 @@ const configZ = z.object({
     volumes: z.array(z.string()).default([]),
     workdir: z.string().optional().default("/mnt"),
     name: z.string().default(`cajon--${basename(process.cwd())}`),
+    stateful: z.boolean().default(false),
 });
 
 const config = configZ.parse(mod.default);
@@ -76,48 +78,49 @@ const prog = await (async () => {
     }
 })();
 
-const running = await container.isRunning(prog, config.name);
+const inspected = await container.inspectContainer(prog, config.name);
 
 const reattachArgs = ["exec", "--interactive", "--tty", config.name, "bash"];
 
 async function _reattach(): Promise<never> {
     logInfo("Reattaching to the running container");
-    logInfo(c.dim(`${basename(prog)} ${reattachArgs.join(" ")}`))
-    const reattachProc = spawn(prog, reattachArgs, {
-        stdio: "inherit",
-    });
 
-    reattachProc.on("exit", (code: number | null) => {
-        exit(code ?? 0);
-    });
-
-    // Wait for child
-    await new Promise<void>((resolve) => {
-        reattachProc.on("close", () => {
-            resolve();
-        });
-    });
-
-    throw new Error("Reattach failed");
+    logCmd(prog, reattachArgs);
+    return exec(prog, reattachArgs);
 }
 
-if (running) {
-    await _reattach();
+if (inspected !== "not-found") {
+    if (inspected.State.Running) {
+        await _reattach();
+    } else {
+        const restartArgs = ["start", config.name];
+
+        await run(prog, restartArgs);
+        await _reattach();
+    }
 }
 
 const progArgs: string[] = [
     "run",
     "--name",
     config.name,
-    "--rm",
     "--network=host",
     "--init",
 ];
 
+if (!config.stateful) {
+    progArgs.push("--rm");
+}
+
 if (args.flags.background) {
-    progArgs.push("--detach");
+    progArgs.push("--detach", "--annotation", "cajon.background=TRUE");
 } else {
-    progArgs.push("--interactive", "--tty");
+    progArgs.push(
+        "--interactive",
+        "--tty",
+        "--annotation",
+        "cajon.background=FALSE",
+    );
 }
 
 for (const [k, v] of Object.entries(config.env)) {
@@ -159,25 +162,11 @@ exec $SHELL`,
 }
 
 logInfo("Loading cajon");
-logInfo(c.dim(`${basename(prog)} ${progArgs.join(" ")}`));
-
-if (!args.flags.dry) {
-    const proc = spawn(prog, progArgs, {
-        stdio: "inherit",
-    });
-
-    // proc.on("exit", (code: number | null) => {
-    //     process.exit(code ?? 0);
-    // });
-
-    // Wait for child
-    await new Promise<void>((resolve) => {
-        proc.on("close", () => {
-            resolve();
-        });
-    });
-}
+logCmd(prog, progArgs);
 
 if (args.flags.background) {
+    await run(prog, progArgs);
     await _reattach();
+} else {
+    await exec(prog, progArgs);
 }
