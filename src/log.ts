@@ -1,5 +1,6 @@
-import c from "ansi-colors";
 import { basename } from "node:path";
+
+import c from "ansi-colors";
 
 const logo = c.blue("#");
 
@@ -16,5 +17,11 @@ export function logError(...what: string[]) {
 }
 
 export function logCmd(command: string, args: string[]) {
-    logInfo(c.dim(`${basename(command)} ${args.join(" ")}`));
+    const _args = args.map(a => a.includes(" ") ? `"${a}"` : a);
+    console.log(JSON.stringify(_args));
+    logInfo(
+        c.dim(
+            `${basename(command)} ${_args.join(" ")}`,
+        ),
+    );
 }
