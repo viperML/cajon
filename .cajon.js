@@ -3,5 +3,8 @@ export default {
     env: {
         FOO: "bar",
     },
-    stateful: true,
+    // stateful: true,
+    preScript: `
+pwd
+`
 };

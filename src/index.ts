@@ -1,3 +1,4 @@
+import assert from "node:assert";
 import fs from "node:fs/promises";
 import { basename } from "node:path";
 import path from "node:path/posix";
@@ -80,7 +81,20 @@ const prog = await (async () => {
 
 const inspected = await container.inspectContainer(prog, config.name);
 
-const reattachArgs = ["exec", "--interactive", "--tty", config.name, "bash"];
+const cmd = config.cmd ?? [
+    "bash",
+    "-l",
+    ...(config.preScript ? ["-c", `${config.preScript.trim()}
+exec bash -l`] : [])
+];
+
+const reattachArgs = [
+    "exec",
+    "--interactive",
+    "--tty",
+    config.name,
+    ...cmd,
+];
 
 async function _reattach(): Promise<never> {
     logInfo("Reattaching to the running container");
@@ -142,23 +156,16 @@ for (const volume of config.volumes) {
     progArgs.push("-v", volume);
 }
 
-progArgs.push(...config.dockerFlags, config.image);
-
 if (args.flags.background) {
+    progArgs.push(...config.dockerFlags, config.image);
     progArgs.push("tail", "-f", "/dev/null");
 } else {
-    if (args._.length > 0) {
-        progArgs.push(...args._.map(String));
-    } else if (config.cmd) {
-        progArgs.push(...config.cmd);
-    } else if (config.preScript) {
-        progArgs.push(
-            "bash",
-            "-lc",
-            `${config.preScript}
-exec $SHELL`,
-        );
-    }
+    const cmdHead = cmd.at(0);
+    assert(cmdHead !== undefined);
+    const cmdTail = cmd.slice(1);
+    progArgs.push("--entrypoint", cmdHead);
+    progArgs.push(...config.dockerFlags, config.image);
+    progArgs.push(...cmdTail);
 }
 
 logInfo("Loading cajon");
