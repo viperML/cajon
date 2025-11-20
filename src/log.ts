@@ -17,11 +17,7 @@ export function logError(...what: string[]) {
 }
 
 export function logCmd(command: string, args: string[]) {
-    const _args = args.map(a => a.includes(" ") ? `"${a}"` : a);
+    const _args = args.map((a) => (a.includes(" ") ? `"${a}"` : a));
     console.log(JSON.stringify(_args));
-    logInfo(
-        c.dim(
-            `${basename(command)} ${_args.join(" ")}`,
-        ),
-    );
+    logInfo(c.dim(`${basename(command)} ${_args.join(" ")}`));
 }

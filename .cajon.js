@@ -6,5 +6,5 @@ export default {
     // stateful: true,
     preScript: `
 pwd
-`
+`,
 };

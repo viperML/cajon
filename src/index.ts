@@ -84,17 +84,16 @@ const inspected = await container.inspectContainer(prog, config.name);
 const cmd = config.cmd ?? [
     "bash",
     "-l",
-    ...(config.preScript ? ["-c", `${config.preScript.trim()}
-exec bash -l`] : [])
+    ...(config.preScript
+        ? [
+              "-c",
+              `${config.preScript.trim()}
+exec bash -l`,
+          ]
+        : []),
 ];
 
-const reattachArgs = [
-    "exec",
-    "--interactive",
-    "--tty",
-    config.name,
-    ...cmd,
-];
+const reattachArgs = ["exec", "--interactive", "--tty", config.name, ...cmd];
 
 async function _reattach(): Promise<never> {
     logInfo("Reattaching to the running container");
