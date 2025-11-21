@@ -2,7 +2,7 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import { basename } from "node:path";
 import path from "node:path/posix";
-import process, { exit } from "node:process";
+import process, { cwd, exit } from "node:process";
 
 import c from "ansi-colors";
 import { cli } from "cleye";
@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import * as container from "./container.js";
 import { logCmd, logError, logInfo } from "./log.js";
+import { loadProfile } from "./profile.js";
 import { exec, run } from "./subprocess.js";
 
 const args = cli({
@@ -65,6 +66,7 @@ const configZ = z.object({
     workdir: z.string().optional().default("/mnt"),
     name: z.string().default(`cajon--${basename(process.cwd())}`),
     stateful: z.boolean().default(false),
+    withNix: z.boolean().default(true),
 });
 
 const config = configZ.parse(mod.default);
@@ -81,17 +83,34 @@ const prog = await (async () => {
 
 const inspected = await container.inspectContainer(prog, config.name);
 
-const cmd = config.cmd ?? [
-    "bash",
-    "-l",
-    ...(config.preScript
-        ? [
-              "-c",
-              `${config.preScript.trim()}
+// const cmd = config.cmd ?? [
+//     "bash",
+//     "-l",
+//     ...(config.preScript
+//         ? [
+//               "-c",
+//               `${config.preScript.trim()}
+// exec bash -l`,
+//           ]
+//         : []),
+// ];
+const cmd: string[] = (() => {
+    if (config.cmd) return config.cmd;
+    else if (config.withNix) {
+        const shell = process.env["SHELL"];
+        assert(shell !== undefined);
+        return [shell, "-l"];
+    } else if (config.preScript) {
+        return [
+            "bash",
+            "-lc",
+            `${config.preScript.trim()}
 exec bash -l`,
-          ]
-        : []),
-];
+        ];
+    } else {
+        return ["bash", "-l"];
+    }
+})();
 
 const reattachArgs = ["exec", "--interactive", "--tty", config.name, ...cmd];
 
@@ -149,6 +168,22 @@ if (config.mountCwd) {
 
 if (config.workdir !== undefined) {
     progArgs.push("--workdir", config.workdir);
+}
+
+if (config.withNix) {
+    const profile = await loadProfile();
+
+    progArgs.push(
+        "-v",
+        "/nix:/nix:ro",
+        "-v",
+        "/run/current-system:/run/current-system:ro",
+        "-e",
+        "NIX_PROFILES",
+
+        "-v",
+        `${profile}:/etc/profile.d/cajon.sh:ro`,
+    );
 }
 
 for (const volume of config.volumes) {
