@@ -7,13 +7,13 @@ if [ -n "\${NIX_PROFILES-}" ]; then
     for profile in $NIX_PROFILES; do
         for_path="$profile/bin"
         if [ -d "$for_path" ]; then
-            PATH="$for_path:$PATH"
+            PATH="$PATH:$for_path"
         fi
 
         for_data="$profile/share"
         if [ -d "$for_data" ]; then
             if [ -n "\${XDG_DATA_DIRS-}" ]; then
-                XDG_DATA_DIRS="$for_data:$XDG_DATA_DIRS"
+                XDG_DATA_DIRS="$XDG_DATA_DIRS:$for_data"
             else
                 XDG_DATA_DIRS="$for_data"
             fi

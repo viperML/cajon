@@ -182,7 +182,7 @@ if (config.withNix) {
         "NIX_PROFILES",
 
         "-v",
-        `${profile}:/etc/profile.d/cajon.sh:ro`,
+        `${profile}:/etc/profile.d/zz_cajon.sh:ro`,
     );
 }
 
