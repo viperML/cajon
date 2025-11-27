@@ -22,12 +22,6 @@ const args = cli({
             default: ".cajon.js",
             alias: "c",
         },
-        background: {
-            type: Boolean,
-            description: "Launch the container in the background",
-            default: false,
-            alias: "b",
-        },
         replace: {
             type: Boolean,
             description:
@@ -40,8 +34,6 @@ const args = cli({
 
 const cajonFile = args.flags.cajonFile;
 
-const mod = await (async () => {})();
-
 const configZ = z.strictObject({
     image: z.string(),
     mountCwd: z.boolean().default(true),
@@ -49,18 +41,17 @@ const configZ = z.strictObject({
     dockerFlags: z.array(z.string()).default([]),
     cmd: z.array(z.string()).optional(),
     preScript: z.string().optional(),
+    cookScript: z.string().optional(),
     volumes: z.array(z.string()).default([]),
     workdir: z.string().optional().default("/mnt"),
     name: z.string().default(`cajon--${basename(process.cwd())}`),
     stateful: z.boolean().default(false),
     withNix: z.boolean().default(true),
+    background: z.boolean().default(false),
 });
 
 const config: z.infer<typeof configZ> = await (async () => {
     if (args._.image !== undefined) {
-        if (args.flags.background) {
-            throw new Error("Passing an image name is not compatible with background");
-        }
         return configZ.parse({
             image: args._.image,
         });
@@ -82,6 +73,10 @@ const config: z.infer<typeof configZ> = await (async () => {
     }
 })();
 
+if (config.cookScript !== undefined) {
+    config.background = true;
+}
+
 const prog = await (async () => {
     const prog = await container.getProg();
     if (prog === undefined) {
@@ -92,19 +87,16 @@ const prog = await (async () => {
     }
 })();
 
-const inspected = await container.inspectContainer(prog, config.name);
+let inspected = await container.inspectContainer(prog, config.name);
 
-// const cmd = config.cmd ?? [
-//     "bash",
-//     "-l",
-//     ...(config.preScript
-//         ? [
-//               "-c",
-//               `${config.preScript.trim()}
-// exec bash -l`,
-//           ]
-//         : []),
-// ];
+if (inspected !== "not-found" && args.flags.replace) {
+    const removeArgs = ["rm", "-f", config.name];
+    logInfo("Wiping existing container");
+    logCmd(prog, removeArgs);
+    await run(prog, removeArgs);
+    inspected = "not-found";
+}
+
 const cmd: string[] = (() => {
     if (config.cmd) return config.cmd;
     else if (config.withNix) {
@@ -132,15 +124,60 @@ async function _reattach(): Promise<never> {
     return exec(prog, reattachArgs);
 }
 
-if (inspected !== "not-found") {
-    if (inspected.State.Running) {
-        await _reattach();
-    } else {
-        const restartArgs = ["start", config.name];
+const COOKED_MARKER = "/cajon-cooked";
 
-        await run(prog, restartArgs);
-        await _reattach();
+async function _checkIfCooked(): Promise<boolean> {
+    const checkArgs = ["exec", config.name, "test", "-f", COOKED_MARKER];
+    try {
+        logCmd(prog, checkArgs);
+        const code = await run(prog, checkArgs);
+        return code === 0;
+    } catch {
+        return false;
     }
+}
+
+async function _cook(): Promise<void> {
+    assert(config.cookScript !== undefined);
+    logInfo("Cooking image...");
+    const cookArgs = [
+        "exec",
+        "--interactive",
+        "--tty",
+        config.name,
+        "bash",
+        "-exc",
+        `${config.cookScript.trim()}
+touch ${COOKED_MARKER}`,
+    ];
+    logCmd(prog, cookArgs);
+    try {
+        const code = await run(prog, cookArgs);
+        if (code !== 0) {
+            throw new Error(`Cook script failed with exit code ${code}`);
+        }
+    } catch (e) {
+        logError("Cook script failed");
+        process.exit(1);
+    }
+    logInfo("Cook script completed");
+}
+
+if (inspected !== "not-found") {
+    if (!inspected.State.Running) {
+        const restartArgs = ["start", config.name];
+        await run(prog, restartArgs);
+    }
+
+    // Check if we need to cook
+    if (config.cookScript !== undefined) {
+        const isCooked = await _checkIfCooked();
+        if (!isCooked) {
+            await _cook();
+        }
+    }
+
+    await _reattach();
 }
 
 const progArgs: string[] = [
@@ -155,7 +192,7 @@ if (!config.stateful) {
     progArgs.push("--rm");
 }
 
-if (args.flags.background) {
+if (config.background) {
     progArgs.push("--detach", "--annotation", "cajon.background=TRUE");
 } else {
     progArgs.push(
@@ -201,7 +238,7 @@ for (const volume of config.volumes) {
     progArgs.push("-v", volume);
 }
 
-if (args.flags.background) {
+if (config.background) {
     progArgs.push(...config.dockerFlags, config.image);
     progArgs.push("tail", "-f", "/dev/null");
 } else {
@@ -216,8 +253,14 @@ if (args.flags.background) {
 logInfo("Loading cajon");
 logCmd(prog, progArgs);
 
-if (args.flags.background) {
+if (config.background) {
     await run(prog, progArgs);
+
+    const needsCooking = await _checkIfCooked();
+    if (needsCooking) {
+        await _cook();
+    }
+
     await _reattach();
 } else {
     await exec(prog, progArgs);

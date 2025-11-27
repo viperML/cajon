@@ -7,4 +7,8 @@ export default {
     preScript: `
 pwd
 `,
+    cookScript: `
+apt update
+apt install build-essential
+`
 };
