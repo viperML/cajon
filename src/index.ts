@@ -14,6 +14,7 @@ import { loadProfile } from "./profile.js";
 import { exec, run } from "./subprocess.js";
 
 const args = cli({
+    parameters: ["[image]"],
     flags: {
         cajonFile: {
             type: String,
@@ -39,21 +40,7 @@ const args = cli({
 
 const cajonFile = args.flags.cajonFile;
 
-const mod = await (async () => {
-    try {
-        let f;
-        if (cajonFile.startsWith("/")) {
-            f = cajonFile;
-        } else {
-            f = path.join(process.cwd(), cajonFile);
-        }
-        await fs.stat(f);
-        return await import(`file://${f}`);
-    } catch (e) {
-        logError("Error while loading the cajonFile:");
-        (console.log(e), process.exit(1));
-    }
-})();
+const mod = await (async () => {})();
 
 const configZ = z.strictObject({
     image: z.string(),
@@ -69,7 +56,31 @@ const configZ = z.strictObject({
     withNix: z.boolean().default(true),
 });
 
-const config = configZ.parse(mod.default);
+const config: z.infer<typeof configZ> = await (async () => {
+    if (args._.image !== undefined) {
+        if (args.flags.background) {
+            throw new Error("Passing an image name is not compatible with background");
+        }
+        return configZ.parse({
+            image: args._.image,
+        });
+    } else {
+        try {
+            let f;
+            if (cajonFile.startsWith("/")) {
+                f = cajonFile;
+            } else {
+                f = path.join(process.cwd(), cajonFile);
+            }
+            await fs.stat(f);
+            const mod = await import(`file://${f}`);
+            return configZ.parse(mod.default);
+        } catch (e) {
+            logError("Error while loading the cajonFile:");
+            (console.log(e), process.exit(1));
+        }
+    }
+})();
 
 const prog = await (async () => {
     const prog = await container.getProg();
