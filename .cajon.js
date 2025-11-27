@@ -10,5 +10,5 @@ pwd
     cookScript: `
 apt update
 apt install build-essential
-`
+`,
 };
