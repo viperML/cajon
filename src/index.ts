@@ -55,7 +55,7 @@ const mod = await (async () => {
     }
 })();
 
-const configZ = z.object({
+const configZ = z.strictObject({
     image: z.string(),
     mountCwd: z.boolean().default(true),
     env: z.object().catchall(z.string()).default({}),
