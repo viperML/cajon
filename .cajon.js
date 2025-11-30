@@ -3,12 +3,12 @@ export default {
     env: {
         FOO: "bar",
     },
-    // stateful: true,
+    stateful: true,
     preScript: `
 pwd
 `,
     cookScript: `
-apt update
-apt install build-essential
+apt update -y
+apt install -y build-essential
 `,
 };

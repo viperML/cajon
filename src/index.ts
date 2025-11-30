@@ -256,8 +256,8 @@ logCmd(prog, progArgs);
 if (config.background) {
     await run(prog, progArgs);
 
-    const needsCooking = await _checkIfCooked();
-    if (needsCooking) {
+    const isCooked = await _checkIfCooked();
+    if (!isCooked) {
         await _cook();
     }
 
