@@ -10,8 +10,8 @@ but I didn't like its DX.
 ```js
 // .cajon.js
 export default {
-    image: "debian",
-    script: `echo Hello!`,
+  image: "debian",
+  script: `echo Hello!`,
 };
 
 /**

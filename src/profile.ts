@@ -24,14 +24,14 @@ fi
 `;
 
 export async function loadProfile(): Promise<string> {
-    const dest = "/dev/shm/cajon-profile.sh";
+  const dest = "/dev/shm/cajon-profile.sh";
 
-    try {
-        await fs.stat(dest);
-    } catch {
-        await fs.writeFile(dest, profileText);
-        await fs.chmod(dest, 0o644);
-    }
+  try {
+    await fs.stat(dest);
+  } catch {
+    await fs.writeFile(dest, profileText);
+    await fs.chmod(dest, 0o644);
+  }
 
-    return dest;
+  return dest;
 }
