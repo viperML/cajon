@@ -46,6 +46,7 @@ const configZ = z.strictObject({
   name: z.string().default(`cajon--${basename(process.cwd())}`),
   stateful: z.boolean().default(false),
   withNix: z.boolean().default(true),
+  withSSH: z.boolean().default(true),
   background: z.boolean().default(false),
 });
 
@@ -231,6 +232,21 @@ if (config.withNix) {
     "-v",
     `${profile}:/etc/profile.d/zz_cajon.sh:ro`,
   );
+}
+
+if (config.withSSH) {
+  const ssh_auth_sock = process.env["SSH_AUTH_SOCK"];
+  const new_ssh_auth_sock = "/run/ssh-agent";
+  if (ssh_auth_sock === undefined) {
+    logError("withSSH is enabled, but SSH_AUTH_SOCK is not set");
+  } else {
+    progArgs.push(
+      "-v",
+      `${ssh_auth_sock}:${new_ssh_auth_sock}`,
+      "-e",
+      `SSH_AUTH_SOCK=${ssh_auth_sock}`,
+    );
+  }
 }
 
 for (const volume of config.volumes) {
