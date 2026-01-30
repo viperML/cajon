@@ -244,7 +244,7 @@ if (config.withSSH) {
       "-v",
       `${ssh_auth_sock}:${new_ssh_auth_sock}`,
       "-e",
-      `SSH_AUTH_SOCK=${ssh_auth_sock}`,
+      `SSH_AUTH_SOCK=${new_ssh_auth_sock}`,
     );
   }
 }
