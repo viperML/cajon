@@ -1,0 +1,6 @@
+/.envrc
+/.cache
+/build
+/__cmake*
+/compile_commands.json
+*result*
