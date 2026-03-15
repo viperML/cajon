@@ -2,6 +2,7 @@
   stdenv,
   nix-gitignore,
   lua5_5,
+  cli11,
   cmake,
   pkg-config,
 }:
@@ -12,5 +13,8 @@ stdenv.mkDerivation {
     cmake
     pkg-config
   ];
-  buildInputs = [ lua5_5 ];
+  buildInputs = [
+    lua5_5
+    cli11
+  ];
 }

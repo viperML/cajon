@@ -1,32 +1,45 @@
+#include <CLI/CLI.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <print>
+#include <stdbool.h>
+
 extern "C" {
-#include <lua.h>
-#include <lualib.h>
 #include <lauxlib.h>
+#include <lualib.h>
 }
 
-int main() {
-    std::println("Hello world");
-    int error = 0;
+using std::string;
 
-    lua_State* L = luaL_newstate();
-    luaL_openlibs(L);
+int main(int argc, char **argv) {
+  CLI::App app{"cajon"};
+  argv = app.ensure_utf8(argv);
 
-    char buf[256];
-    if (fgets(buf, sizeof(buf), stdin) != NULL) {
-        error = luaL_loadstring(L, buf) || lua_pcall(L, 0, LUA_MULTRET, 0);
-        if (error) {
-            std::cout << lua_tostring(L, -1);
-            lua_pop(L, 1);
-        }
+  bool replace{false};
+  string cajonFile{".cajon.lua"};
+
+  app.add_flag("-r,--replace", replace, "replace running container");
+  app.add_option("-c,--cajon-file", cajonFile, "path to the cajonfile to use");
+
+  CLI11_PARSE(app, argc, argv);
+
+  lua_State *L = luaL_newstate();
+  luaL_openlibs(L);
+
+  if (luaL_loadfile(L, cajonFile.c_str()) || lua_pcall(L, 0, LUA_MULTRET, 0)) {
+    std::println("Error: {}", lua_tostring(L, -1));
+    lua_pop(L, 1);
+  } else {
+    int nresults = lua_gettop(L); // number of return values
+    if (nresults >= 1) {
+      const char *val = lua_tostring(L, -1);
+      printf("RES: %p\n", val);
+      lua_pop(L, nresults); // clean up
     }
+  }
 
+  lua_close(L);
 
-    lua_close(L);
-
-
-    return EXIT_SUCCESS;
+  return EXIT_SUCCESS;
 }

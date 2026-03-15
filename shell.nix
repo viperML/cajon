@@ -8,6 +8,8 @@ with import <nixpkgs> { };
     nativeBuildInputs = old.nativeBuildInputs ++ [
       clang-tools
       neocmakelsp
+      lldb
+      stylua
     ];
     env = {
       CMAKE_EXPORT_COMPILE_COMMANDS = "ON";
