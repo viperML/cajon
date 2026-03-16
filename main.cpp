@@ -1,16 +1,26 @@
+#include "main.hpp"
 #include <CLI/CLI.hpp>
-#include <cstdio>
 #include <cstdlib>
-#include <iostream>
+#include <map>
 #include <print>
 #include <stdbool.h>
 
 extern "C" {
 #include <lauxlib.h>
+#include <lua.h>
 #include <lualib.h>
 }
 
 using std::string;
+
+void panic(lua_State *L) {
+  auto err = lua_tostring(L, -1);
+  if (err == nullptr) {
+    err = "unknown error";
+  }
+  std::println("Fatal error: {}", err);
+  std::exit(EXIT_FAILURE);
+}
 
 int main(int argc, char **argv) {
   CLI::App app{"cajon"};
@@ -27,16 +37,8 @@ int main(int argc, char **argv) {
   lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
-  if (luaL_loadfile(L, cajonFile.c_str()) || lua_pcall(L, 0, LUA_MULTRET, 0)) {
-    std::println("Error: {}", lua_tostring(L, -1));
-    lua_pop(L, 1);
-  } else {
-    int nresults = lua_gettop(L); // number of return values
-    if (nresults >= 1) {
-      const char *val = lua_tostring(L, -1);
-      printf("RES: %p\n", val);
-      lua_pop(L, nresults); // clean up
-    }
+  if (luaL_dofile(L, cajonFile.c_str()) != LUA_OK) {
+    panic(L);
   }
 
   lua_close(L);
