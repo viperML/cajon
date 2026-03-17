@@ -13,6 +13,7 @@ use std::sync::OnceLock;
 use clap::Parser;
 use color_eyre::Result;
 use color_eyre::eyre::Context;
+use color_eyre::eyre::ContextCompat;
 use color_eyre::eyre::bail;
 use mlua::LuaSerdeExt;
 use mlua::prelude::*;
@@ -64,7 +65,15 @@ struct Config {
 }
 
 impl Config {
-    fn hash_str(&self) -> String {
+    fn cook_hash(&self) -> String {
+        let mut hasher = DefaultHasher::new();
+        self.image.hash(&mut hasher);
+        self.cook_script.hash(&mut hasher);
+        let hash = hasher.finish();
+        format!("{hash:016x}")
+    }
+
+    fn runtime_hash(&self) -> String {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         let hash = hasher.finish();
@@ -104,7 +113,6 @@ struct InspectContainerState {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct InspectContainerConfig {
-    cmd: String,
     annotations: HashMap<String, String>,
 }
 
@@ -138,8 +146,6 @@ impl Config {
             "json",
         ]);
 
-        print_command(&cmd);
-
         let output = cmd.output().wrap_err("inspecting container")?;
         let stdout = String::from_utf8(output.stdout)?;
 
@@ -155,6 +161,43 @@ impl Config {
         return Ok(res2);
     }
 
+    fn inspect_image(&self) -> Result<InspectImage> {
+        let mut exists_cmd = Command::new("podman");
+        exists_cmd.args(&["image", "exists"]);
+        exists_cmd.arg(&self.image);
+        exists_cmd.stdout(Stdio::null());
+        exists_cmd.stderr(Stdio::null());
+        let st = exists_cmd.status()?;
+
+        // Pull image if doesn't exists locally
+        if !st.success() {
+            let mut cmd = Command::new("podman");
+            cmd.args(&["image", "pull"]);
+            cmd.arg(&self.image);
+            print_command(&cmd);
+            let st = cmd.status()?;
+            if !st.success() {
+                bail!(st);
+            }
+        }
+
+        let mut cmd = Command::new("podman");
+        cmd.args(&["image", "inspect"]);
+        cmd.arg(&self.image);
+        let output = cmd.output()?;
+        if !output.status.success() {
+            bail!(output.status);
+        }
+
+        let stdout = String::from_utf8(output.stdout)?;
+        let mut parsed: Vec<InspectImage> =
+            serde_json::from_str(&stdout).wrap_err("parsing image inspect")?;
+
+        let res = parsed.pop().wrap_err("failed getting images")?;
+
+        return Ok(res);
+    }
+
     fn run(&self) -> Result<()> {
         let mut cmd = Command::new("podman");
 
@@ -167,10 +210,6 @@ impl Config {
         cmd.arg("--workdir");
         cmd.arg(&self.workdir);
 
-        let hash = self.hash_str();
-        cmd.arg("--annotation");
-        cmd.arg(format!("cajon.hash={hash}"));
-
         cmd.arg("--name");
         cmd.arg(&self.name);
 
@@ -178,23 +217,6 @@ impl Config {
 
         print_command(&cmd);
 
-        bail!(cmd.exec());
-    }
-
-    fn attach(&self) -> Result<()> {
-        let mut cmd = Command::new("podman");
-        cmd.args(&["exec", "--interactive", "--tty"]);
-        cmd.arg(&self.name);
-        cmd.arg("/bin/sh");
-        print_command(&cmd);
-        bail!(cmd.exec());
-    }
-
-    fn start(&self) -> Result<()> {
-        let mut cmd = Command::new("podman");
-        cmd.args(&["start", "--attach", "--interactive"]);
-        cmd.arg(&self.name);
-        print_command(&cmd);
         bail!(cmd.exec());
     }
 
@@ -212,31 +234,59 @@ impl Config {
         Ok(())
     }
 
-    fn cook(&self) -> Result<()> {
+    fn cook(&mut self, final_cmd: Vec<String>) -> Result<()> {
         let cook_script = self
             .cook_script
             .as_deref()
-            .expect("cook called without cook_script");
+            .wrap_err("cook called without a cook script")?;
 
-        let mut cmd = Command::new("podman");
-        cmd.args(&["run", "--name"]);
-        cmd.arg(&self.name);
+        let hash = self.cook_hash();
+        let final_image = format!("localhost/cajon-{}", hash);
 
-        let hash = self.hash_str();
-        cmd.arg("--annotation");
-        cmd.arg(format!("cajon.hash={hash}"));
+        let mut exists_cmd = Command::new("podman");
+        exists_cmd.args(&["image", "exists"]);
+        exists_cmd.arg(&final_image);
+        exists_cmd.stderr(Stdio::null());
+        exists_cmd.stdout(Stdio::null());
+        let st = exists_cmd.status()?;
+        if st.success() {
+            self.image = final_image.clone();
+            return Ok(());
+        }
 
-        cmd.arg("--workdir");
-        cmd.arg(&self.workdir);
+        let cooking_name = format!("{}-cook", self.name);
 
-        cmd.arg(&self.image);
-        cmd.args(&["/bin/sh", "-c"]);
-        cmd.arg(cook_script);
+        let mut cook_cmd = Command::new("podman");
+        cook_cmd.args(&["run", "--interactive", "--tty", "--replace"]);
+        cook_cmd.arg("--name");
+        cook_cmd.arg(&cooking_name);
+        cook_cmd.arg(&self.image);
+        cook_cmd.args(&["/bin/sh", "-c"]);
+        cook_cmd.arg(&cook_script);
 
-        print_command(&cmd);
-        cmd.status().wrap_err("running cook script")?;
+        print_command(&cook_cmd);
+        let st = cook_cmd.status()?;
+        if !st.success() {
+            bail!(st);
+        }
 
-        self.start()
+        let final_cmd_json = serde_json::to_string(&final_cmd)?;
+
+        let mut commit_cmd = Command::new("podman");
+        commit_cmd.args(&["container", "commit"]);
+        commit_cmd.arg("--change");
+        commit_cmd.arg(format!("CMD={}", final_cmd_json));
+        commit_cmd.arg(&cooking_name);
+        commit_cmd.arg(&final_image);
+        print_command(&commit_cmd);
+        let st = commit_cmd.status()?;
+        if !st.success() {
+            bail!(st);
+        }
+
+        self.image = final_image.clone();
+
+        Ok(())
     }
 }
 
@@ -253,41 +303,21 @@ fn main() -> Result<()> {
             .wrap_err("parsing configuration")?
     };
 
-    config.stateful = config.stateful || config.cook_script.is_some();
     if let Some(s) = config.cook_script.as_mut() {
         *s = textwrap::dedent(s.as_str()).trim().to_string();
     }
 
+    let image_inspect = config.inspect_image()?;
+    let container_inspect = config.inspect_container()?;
+
+    let cmd = image_inspect.config.cmd;
+
     if !config.stateful {
         config.destroy()?;
-        return config.run();
     }
 
-    let inspect = config.inspect_container()?;
-    let new_hash = config.hash_str();
+    config.cook(cmd.clone())?;
+    config.run()?;
 
-    let old_hash = inspect
-        .as_ref()
-        .and_then(|o| o.config.annotations.get("cajon.hash"))
-        .map(String::as_str)
-        .unwrap_or("");
-
-    let container_valid = inspect.is_some() && old_hash == new_hash;
-
-    if config.cook_script.is_some() && !container_valid {
-        config.destroy()?;
-        return config.cook();
-    }
-
-    if !container_valid {
-        config.destroy()?;
-        return config.run();
-    }
-
-    let o = inspect.as_ref().unwrap();
-    if o.state.running {
-        config.attach()
-    } else {
-        config.start()
-    }
+    Ok(())
 }
