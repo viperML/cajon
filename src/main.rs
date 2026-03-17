@@ -97,26 +97,38 @@ fn print_command(cmd: &Command) {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct InspectState {
+struct InspectContainerState {
     running: bool,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct InspectConfig {
+struct InspectContainerConfig {
     cmd: String,
     annotations: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct InspectOutput {
-    state: InspectState,
-    config: InspectConfig,
+struct InspectContainer {
+    state: InspectContainerState,
+    config: InspectContainerConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct InspectImageConfig {
+    cmd: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct InspectImage {
+    config: InspectImageConfig,
 }
 
 impl Config {
-    fn inspect_container(&self) -> Result<Option<InspectOutput>> {
+    fn inspect_container(&self) -> Result<Option<InspectContainer>> {
         let mut cmd = Command::new("podman");
         cmd.args(&[
             "container",
@@ -135,7 +147,7 @@ impl Config {
             return Ok(None);
         }
 
-        let mut res: Vec<InspectOutput> =
+        let mut res: Vec<InspectContainer> =
             serde_json::from_str(&stdout).wrap_err("deserializing output")?;
 
         let res2 = res.pop();
