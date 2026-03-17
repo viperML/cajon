@@ -396,7 +396,7 @@ fn main() -> Result<()> {
     config.cook(cmd.clone())?;
 
     if config.stateful && !cli.recreate {
-        if let Some(old_container) = container_inspect {
+        if let Some(old_container) = &container_inspect {
             let new_hash = config.runtime_hash();
 
             let old_hash = old_container
@@ -412,7 +412,10 @@ fn main() -> Result<()> {
         }
     }
 
-    config.destroy()?;
+    if let Some(_) = &container_inspect {
+        config.destroy()?;
+    }
+
     config.run(&cmd)?;
 
     Ok(())
