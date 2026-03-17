@@ -97,6 +97,10 @@ impl Cli {
     }
 }
 
+/// Cajon: load containers with ease.
+///
+/// Cajon loads a container and mounts the working directory, with
+/// many options to prepare and configure it.
 #[derive(Debug, clap::Parser)]
 struct Cli {
     #[arg(short, long, default_value = ".cajon.lua")]

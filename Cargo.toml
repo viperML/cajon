@@ -2,6 +2,7 @@
 name = "cajon"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.6.0", features = [
@@ -13,7 +14,9 @@ mlua = { version = "0.11.6", features = [
   "serde",
   "send",
 ] }
-owo-colors = { version = "4.3.0", features = ["supports-colors"] }
+owo-colors = { version = "4.3.0", features = [
+  "supports-colors",
+] }
 serde = { version = "1.0.228", features = [
   "derive",
 ] }
