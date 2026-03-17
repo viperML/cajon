@@ -8,4 +8,7 @@ return {
 	env = {
 		FOO = "bar",
 	},
+	script = [[
+    printenv
+  ]],
 }

@@ -1,5 +1,8 @@
+mod log;
+
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::env::current_dir;
 use std::fs;
 use std::hash::DefaultHasher;
 use std::hash::Hash;
@@ -18,6 +21,8 @@ use color_eyre::eyre::bail;
 use mlua::LuaSerdeExt;
 use mlua::prelude::*;
 use serde::Deserialize;
+
+use crate::log::print_command;
 
 fn default_true() -> bool {
     true
@@ -96,15 +101,6 @@ struct Cli {
     #[arg(short, long, default_value = "false")]
     /// If using `stateful = true`, destroy and recreate the container
     recreate: bool,
-}
-
-fn print_command(cmd: &Command) {
-    let mut info = cmd.get_program().to_owned();
-    for arg in cmd.get_args() {
-        info.push(" ");
-        info.push(arg);
-    }
-    println!("$ {}", info.to_string_lossy());
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,7 +197,7 @@ impl Config {
         return Ok(res);
     }
 
-    fn run(&self) -> Result<()> {
+    fn run(&self, image_cmd: &[String]) -> Result<()> {
         let mut cmd = Command::new("podman");
 
         cmd.args(&[
@@ -223,10 +219,26 @@ impl Config {
         cmd.arg("--workdir");
         cmd.arg(&self.workdir);
 
+        let workdir = current_dir()?;
+        cmd.arg("--volume");
+        cmd.arg(format!("{}:{}", workdir.to_string_lossy(), &self.workdir));
+
         cmd.arg("--name");
         cmd.arg(&self.name);
 
+        for (k, v) in &self.env {
+            cmd.arg("--env");
+            cmd.arg(format!("{k}={v}"));
+        }
+
         cmd.arg(&self.image);
+
+        if let Some(ref script) = self.script {
+            let shell_cmd = format!("{script}\nexec {}", image_cmd.join(" "));
+            cmd.args(image_cmd);
+            cmd.arg("-c");
+            cmd.arg(shell_cmd);
+        }
 
         print_command(&cmd);
 
@@ -328,6 +340,10 @@ fn main() -> Result<()> {
         *s = textwrap::dedent(s.as_str()).trim().to_string();
     }
 
+    if let Some(s) = config.script.as_mut() {
+        *s = textwrap::dedent(s.as_str()).trim().to_string();
+    }
+
     let container_inspect = config.inspect_container()?;
     if let Some(ref i) = container_inspect
         && i.state.running
@@ -356,7 +372,7 @@ fn main() -> Result<()> {
     }
 
     config.destroy()?;
-    config.run()?;
+    config.run(&cmd)?;
 
     Ok(())
 }
