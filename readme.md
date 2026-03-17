@@ -30,8 +30,15 @@ return {
 
   -- Keep the state of the container after execution, otherwise discard it.
   stateful = true,
+
+  -- Extra environment variables to set.
+  env = {
+    TOKEN = "XXX",
+  },
 }
 ```
+
+Check all the options with `cajon --init`.
 
 Download the latest release of the binary: https://github.com/viperML/cajon/releases/tag/latest (requires `podman`).
 
