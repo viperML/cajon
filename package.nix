@@ -4,8 +4,12 @@
   pkg-config,
   lua5_5,
 }:
+let
+  cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+in
 rustPlatform.buildRustPackage {
-  name = "cajon";
+  pname = cargoToml.package.name;
+  version = cargoToml.package.version;
   src = nix-gitignore.gitignoreSource [ ] ./.;
   cargoLock.lockFile = ./Cargo.lock;
   nativeBuildInputs = [
