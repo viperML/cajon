@@ -1,3 +1,4 @@
+mod init;
 mod log;
 
 use std::collections::BTreeMap;
@@ -60,7 +61,8 @@ struct Config {
     volumes: Vec<String>,
     script: Option<String>,
     cook_script: Option<String>,
-    extra_flags: Option<String>,
+    #[serde(default)]
+    extra_flags: Vec<String>,
     #[serde(default)]
     stateful: bool,
     #[serde(default = "default_workdir")]
@@ -101,6 +103,9 @@ struct Cli {
     #[arg(short, long, default_value = "false")]
     /// If using `stateful = true`, destroy and recreate the container
     recreate: bool,
+    #[arg(long, default_value = "false")]
+    /// Create an empty .cajon.lua with type hints and an example in the current directory
+    init: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +212,7 @@ impl Config {
             "--network",
             "host",
             "--init",
+            "--privileged",
         ]);
 
         if !self.stateful {
@@ -216,12 +222,14 @@ impl Config {
             cmd.arg(format!("cajon.hash={}", self.runtime_hash()));
         }
 
-        cmd.arg("--workdir");
-        cmd.arg(&self.workdir);
+        if self.mount_cwd {
+            cmd.arg("--workdir");
+            cmd.arg(&self.workdir);
 
-        let workdir = current_dir()?;
-        cmd.arg("--volume");
-        cmd.arg(format!("{}:{}", workdir.to_string_lossy(), &self.workdir));
+            let workdir = current_dir()?;
+            cmd.arg("--volume");
+            cmd.arg(format!("{}:{}", workdir.to_string_lossy(), &self.workdir));
+        }
 
         cmd.arg("--name");
         cmd.arg(&self.name);
@@ -229,6 +237,10 @@ impl Config {
         for (k, v) in &self.env {
             cmd.arg("--env");
             cmd.arg(format!("{k}={v}"));
+        }
+
+        for flag in &self.extra_flags {
+            cmd.arg(flag);
         }
 
         cmd.arg(&self.image);
@@ -327,6 +339,10 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let cli = Cli::global();
+
+    if cli.init {
+        return init::init();
+    }
 
     let mut config: Config = {
         let contents =

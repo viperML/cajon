@@ -1,4 +1,11 @@
---- @meta
+use std::env::current_dir;
+use std::fs;
+
+use color_eyre::Result;
+use color_eyre::eyre::Context;
+use color_eyre::eyre::bail;
+
+const INIT_TEMPLATE: &str = r#"--- @meta
 
 --- @class Config
 --- @field image string                  Image to use.
@@ -14,8 +21,16 @@
 
 --- @type Config
 return {
-	image = "docker.io/library/debian:latest",
-	cook_script = [[
-    apt update -y
-  ]],
+  image = "docker.io/library/fedora:latest",
+}
+"#;
+
+pub fn init() -> Result<()> {
+    let dest = current_dir()?.join(".cajon.lua");
+    if dest.exists() {
+        bail!(".cajon.lua already exists in the current directory");
+    }
+    fs::write(&dest, INIT_TEMPLATE).wrap_err("writing .cajon.lua")?;
+    println!("Created {}", dest.display());
+    Ok(())
 }
