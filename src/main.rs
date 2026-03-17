@@ -69,6 +69,8 @@ struct Config {
     workdir: String,
     #[serde(default = "default_name")]
     name: String,
+    #[serde(default = "default_true")]
+    with_ssh: bool,
 }
 
 impl Config {
@@ -98,13 +100,13 @@ impl Cli {
 #[derive(Debug, clap::Parser)]
 struct Cli {
     #[arg(short, long, default_value = ".cajon.lua")]
-    /// Path to the cajon configuration file
+    /// Path to the cajon configuration file.
     config_file: PathBuf,
     #[arg(short, long, default_value = "false")]
-    /// If using `stateful = true`, destroy and recreate the container
+    /// If using `stateful = true`, destroy and recreate the container.
     recreate: bool,
     #[arg(long, default_value = "false")]
-    /// Create an empty .cajon.lua with type hints and an example in the current directory
+    /// Create an empty .cajon.lua with type hints and an example in the current directory.
     init: bool,
 }
 
@@ -241,6 +243,25 @@ impl Config {
 
         for flag in &self.extra_flags {
             cmd.arg(flag);
+        }
+
+        if self.with_ssh {
+            use owo_colors::OwoColorize;
+            match std::env::var("SSH_AUTH_SOCK") {
+                Err(_) => {
+                    eprintln!(
+                        "{} with_ssh is enabled, but SSH_AUTH_SOCK is not set",
+                        "error:".red()
+                    );
+                }
+                Ok(ssh_auth_sock) => {
+                    let new_ssh_auth_sock = "/run/ssh-agent";
+                    cmd.arg("--volume");
+                    cmd.arg(format!("{ssh_auth_sock}:{new_ssh_auth_sock}"));
+                    cmd.arg("--env");
+                    cmd.arg(format!("SSH_AUTH_SOCK={new_ssh_auth_sock}"));
+                }
+            }
         }
 
         cmd.arg(&self.image);
