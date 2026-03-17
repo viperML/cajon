@@ -93,6 +93,9 @@ struct Cli {
     #[arg(short, long, default_value = ".cajon.lua")]
     /// Path to the cajon configuration file
     config_file: PathBuf,
+    #[arg(short, long, default_value = "false")]
+    /// If using `stateful = true`, destroy and recreate the container
+    recreate: bool,
 }
 
 fn print_command(cmd: &Command) {
@@ -201,7 +204,14 @@ impl Config {
     fn run(&self) -> Result<()> {
         let mut cmd = Command::new("podman");
 
-        cmd.args(&["run", "--interactive", "--tty"]);
+        cmd.args(&[
+            "run",
+            "--interactive",
+            "--tty",
+            "--network",
+            "host",
+            "--init",
+        ]);
 
         if !self.stateful {
             cmd.arg("--rm");
@@ -328,7 +338,7 @@ fn main() -> Result<()> {
     let cmd = image_inspect.config.cmd;
     config.cook(cmd.clone())?;
 
-    if config.stateful {
+    if config.stateful && !cli.recreate {
         if let Some(old_container) = container_inspect {
             let new_hash = config.runtime_hash();
 
