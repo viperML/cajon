@@ -205,6 +205,9 @@ impl Config {
 
         if !self.stateful {
             cmd.arg("--rm");
+        } else {
+            cmd.arg("--annotation");
+            cmd.arg(format!("cajon.hash={}", self.runtime_hash()));
         }
 
         cmd.arg("--workdir");
@@ -234,11 +237,19 @@ impl Config {
         Ok(())
     }
 
+    fn start(&self) -> Result<()> {
+        let mut cmd = Command::new("podman");
+        cmd.args(&["container", "start", "--attach", "--interactive"]);
+        cmd.arg(&self.name);
+        print_command(&cmd);
+        bail!(cmd.exec());
+    }
+
     fn cook(&mut self, final_cmd: Vec<String>) -> Result<()> {
-        let cook_script = self
-            .cook_script
-            .as_deref()
-            .wrap_err("cook called without a cook script")?;
+        let cook_script = match self.cook_script.as_deref() {
+            None => return Ok(()),
+            Some(x) => x,
+        };
 
         let hash = self.cook_hash();
         let final_image = format!("localhost/cajon-{}", hash);
@@ -307,16 +318,34 @@ fn main() -> Result<()> {
         *s = textwrap::dedent(s.as_str()).trim().to_string();
     }
 
-    let image_inspect = config.inspect_image()?;
     let container_inspect = config.inspect_container()?;
-
+    if let Some(ref i) = container_inspect
+        && i.state.running
+    {
+        bail!("Container is already running in other session!");
+    }
+    let image_inspect = config.inspect_image()?;
     let cmd = image_inspect.config.cmd;
+    config.cook(cmd.clone())?;
 
-    if !config.stateful {
-        config.destroy()?;
+    if config.stateful {
+        if let Some(old_container) = container_inspect {
+            let new_hash = config.runtime_hash();
+
+            let old_hash = old_container
+                .config
+                .annotations
+                .get("cajon.hash")
+                .cloned()
+                .unwrap_or(String::new());
+
+            if old_hash == new_hash {
+                config.start()?;
+            }
+        }
     }
 
-    config.cook(cmd.clone())?;
+    config.destroy()?;
     config.run()?;
 
     Ok(())
