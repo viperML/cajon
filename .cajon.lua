@@ -10,7 +10,7 @@
 --- @field volumes string[]|nil          Additional volume mounts in "host:container" format.
 --- @field script string|nil             Shell script to run inside the container before the default command.
 --- @field cook_script string|nil        Shell script to use to cook the container.
---- @field extra_flags string[]|nil      Extra flags to pass verbatim.
+--- @field extra_args string[]|nil       Extra flags to pass verbatim.
 
 --- @type Config
 return {

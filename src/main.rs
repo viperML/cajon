@@ -62,7 +62,7 @@ struct Config {
     script: Option<String>,
     cook_script: Option<String>,
     #[serde(default)]
-    extra_flags: Vec<String>,
+    extra_args: Vec<String>,
     #[serde(default)]
     stateful: bool,
     #[serde(default = "default_workdir")]
@@ -93,7 +93,7 @@ impl Config {
 impl Cli {
     fn global() -> &'static Self {
         static CLI: OnceLock<Cli> = OnceLock::new();
-        CLI.get_or_init(|| Self::parse())
+        CLI.get_or_init(Self::parse)
     }
 }
 
@@ -148,7 +148,7 @@ struct InspectImage {
 impl Config {
     fn inspect_container(&self) -> Result<Option<InspectContainer>> {
         let mut cmd = Command::new("podman");
-        cmd.args(&[
+        cmd.args([
             "container",
             "inspect",
             self.name.as_str(),
@@ -159,7 +159,7 @@ impl Config {
         let output = cmd.output().wrap_err("inspecting container")?;
         let stdout = String::from_utf8(output.stdout)?;
 
-        if output.status.success() == false {
+        if !output.status.success() {
             return Ok(None);
         }
 
@@ -168,12 +168,12 @@ impl Config {
 
         let res2 = res.pop();
 
-        return Ok(res2);
+        Ok(res2)
     }
 
     fn inspect_image(&self) -> Result<InspectImage> {
         let mut exists_cmd = Command::new("podman");
-        exists_cmd.args(&["image", "exists"]);
+        exists_cmd.args(["image", "exists"]);
         exists_cmd.arg(&self.image);
         exists_cmd.stdout(Stdio::null());
         exists_cmd.stderr(Stdio::null());
@@ -182,7 +182,7 @@ impl Config {
         // Pull image if doesn't exists locally
         if !st.success() {
             let mut cmd = Command::new("podman");
-            cmd.args(&["image", "pull"]);
+            cmd.args(["image", "pull"]);
             cmd.arg(&self.image);
             print_command(&cmd);
             let st = cmd.status()?;
@@ -192,7 +192,7 @@ impl Config {
         }
 
         let mut cmd = Command::new("podman");
-        cmd.args(&["image", "inspect"]);
+        cmd.args(["image", "inspect"]);
         cmd.arg(&self.image);
         let output = cmd.output()?;
         if !output.status.success() {
@@ -205,13 +205,13 @@ impl Config {
 
         let res = parsed.pop().wrap_err("failed getting images")?;
 
-        return Ok(res);
+        Ok(res)
     }
 
     fn run(&self, image_cmd: &[String]) -> Result<()> {
         let mut cmd = Command::new("podman");
 
-        cmd.args(&[
+        cmd.args([
             "run",
             "--interactive",
             "--tty",
@@ -245,10 +245,6 @@ impl Config {
             cmd.arg(format!("{k}={v}"));
         }
 
-        for flag in &self.extra_flags {
-            cmd.arg(flag);
-        }
-
         if self.with_ssh {
             use owo_colors::OwoColorize;
             match std::env::var("SSH_AUTH_SOCK") {
@@ -268,6 +264,10 @@ impl Config {
             }
         }
 
+        for arg in &self.extra_args {
+            cmd.arg(arg);
+        }
+
         cmd.arg(&self.image);
 
         if let Some(ref script) = self.script {
@@ -284,7 +284,7 @@ impl Config {
 
     fn destroy(&self) -> Result<()> {
         let mut cmd = Command::new("podman");
-        cmd.args(&["container", "rm", "--force", "--volumes", "--ignore"]);
+        cmd.args(["container", "rm", "--force", "--volumes", "--ignore"]);
         cmd.arg(&self.name);
 
         cmd.stderr(Stdio::null());
@@ -298,7 +298,7 @@ impl Config {
 
     fn start(&self) -> Result<()> {
         let mut cmd = Command::new("podman");
-        cmd.args(&["container", "start", "--attach", "--interactive"]);
+        cmd.args(["container", "start", "--attach", "--interactive"]);
         cmd.arg(&self.name);
         print_command(&cmd);
         bail!(cmd.exec());
@@ -314,7 +314,7 @@ impl Config {
         let final_image = format!("localhost/cajon-{}", hash);
 
         let mut exists_cmd = Command::new("podman");
-        exists_cmd.args(&["image", "exists"]);
+        exists_cmd.args(["image", "exists"]);
         exists_cmd.arg(&final_image);
         exists_cmd.stderr(Stdio::null());
         exists_cmd.stdout(Stdio::null());
@@ -327,12 +327,15 @@ impl Config {
         let cooking_name = format!("{}-cook", self.name);
 
         let mut cook_cmd = Command::new("podman");
-        cook_cmd.args(&["run", "--interactive", "--tty", "--replace"]);
+        cook_cmd.args(["run", "--interactive", "--tty", "--replace"]);
         cook_cmd.arg("--name");
         cook_cmd.arg(&cooking_name);
+        for arg in &self.extra_args {
+            cook_cmd.arg(arg);
+        }
         cook_cmd.arg(&self.image);
-        cook_cmd.args(&["/bin/sh", "-c"]);
-        cook_cmd.arg(&cook_script);
+        cook_cmd.args(["/bin/sh", "-c"]);
+        cook_cmd.arg(cook_script);
 
         print_command(&cook_cmd);
         let st = cook_cmd.status()?;
@@ -343,7 +346,7 @@ impl Config {
         let final_cmd_json = serde_json::to_string(&final_cmd)?;
 
         let mut commit_cmd = Command::new("podman");
-        commit_cmd.args(&["container", "commit"]);
+        commit_cmd.args(["container", "commit"]);
         commit_cmd.arg("--change");
         commit_cmd.arg(format!("CMD={}", final_cmd_json));
         commit_cmd.arg(&cooking_name);
@@ -395,8 +398,8 @@ fn main() -> Result<()> {
     let cmd = image_inspect.config.cmd;
     config.cook(cmd.clone())?;
 
-    if config.stateful && !cli.recreate {
-        if let Some(old_container) = &container_inspect {
+    if config.stateful && !cli.recreate
+        && let Some(old_container) = &container_inspect {
             let new_hash = config.runtime_hash();
 
             let old_hash = old_container
@@ -410,9 +413,8 @@ fn main() -> Result<()> {
                 config.start()?;
             }
         }
-    }
 
-    if let Some(_) = &container_inspect {
+    if container_inspect.is_some() {
         config.destroy()?;
     }
 

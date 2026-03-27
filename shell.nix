@@ -7,6 +7,7 @@ cajon.overrideAttrs (old: {
     rustfmt
     lldb
     stylua
+    clippy
   ];
   env = {
     RUST_SRC_PATH = "${rustPlatform.rustLibSrc}";
