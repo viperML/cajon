@@ -19,6 +19,7 @@ const INIT_TEMPLATE: &str = r#"--- @meta
 --- @field cook_script string|nil        Shell script to use to cook the container.
 --- @field extra_args string[]|nil       Extra arguments to pass verbatim.
 --- @field with_ssh boolean|nil          Mount the SSH agent socket into the container. (default: true)
+--- @field with_x11 boolean|nil          Mount the X11 socket into the container. (default: true)
 
 --- @type Config
 return {

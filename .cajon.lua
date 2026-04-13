@@ -17,5 +17,6 @@ return {
 	image = "docker.io/library/debian:latest",
 	cook_script = [[
     apt update -y
+    apt install -y x11-apps
   ]],
 }

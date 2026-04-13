@@ -71,6 +71,8 @@ struct Config {
     name: String,
     #[serde(default = "default_true")]
     with_ssh: bool,
+    #[serde(default = "default_true")]
+    with_x11: bool,
 }
 
 impl Config {
@@ -264,6 +266,44 @@ impl Config {
             }
         }
 
+        if self.with_x11 {
+            use owo_colors::OwoColorize;
+            match std::env::var("DISPLAY") {
+                Err(_) => {
+                    eprintln!(
+                        "{} with_x11 is enabled, but DISPLAY is not set",
+                        "error:".red()
+                    );
+                }
+                Ok(display) => {
+                    cmd.arg("--env");
+                    cmd.arg(format!("DISPLAY={display}"));
+                    cmd.arg("--volume");
+                    cmd.arg("/tmp/.X11-unix:/tmp/.X11-unix");
+
+                    let xauthority = std::env::var("XAUTHORITY")
+                        .map(PathBuf::from)
+                        .ok()
+                        .unwrap_or_else(|| {
+                            PathBuf::from(std::env::var("HOME").unwrap()).join(".Xauthority")
+                        });
+
+                    if let Ok(true) = xauthority.try_exists() {
+                        let new_xauthority = "/tmp/.Xauthority";
+                        cmd.arg("--env");
+                        cmd.arg(format!("XAUTHORITY={new_xauthority}"));
+                        cmd.arg("--volume");
+                        cmd.arg(format!(
+                            "{}:{new_xauthority}",
+                            xauthority
+                                .to_str()
+                                .expect("Failed to convert Xauthority path to string"),
+                        ));
+                    }
+                }
+            }
+        }
+
         for arg in &self.extra_args {
             cmd.arg(arg);
         }
@@ -327,7 +367,14 @@ impl Config {
         let cooking_name = format!("{}-cook", self.name);
 
         let mut cook_cmd = Command::new("podman");
-        cook_cmd.args(["run", "--interactive", "--tty", "--replace"]);
+        cook_cmd.args([
+            "run",
+            "--interactive",
+            "--tty",
+            "--replace",
+            "--network",
+            "host",
+        ]);
         cook_cmd.arg("--name");
         cook_cmd.arg(&cooking_name);
         for arg in &self.extra_args {
@@ -398,21 +445,23 @@ fn main() -> Result<()> {
     let cmd = image_inspect.config.cmd;
     config.cook(cmd.clone())?;
 
-    if config.stateful && !cli.recreate
-        && let Some(old_container) = &container_inspect {
-            let new_hash = config.runtime_hash();
+    if config.stateful
+        && !cli.recreate
+        && let Some(old_container) = &container_inspect
+    {
+        let new_hash = config.runtime_hash();
 
-            let old_hash = old_container
-                .config
-                .annotations
-                .get("cajon.hash")
-                .cloned()
-                .unwrap_or(String::new());
+        let old_hash = old_container
+            .config
+            .annotations
+            .get("cajon.hash")
+            .cloned()
+            .unwrap_or(String::new());
 
-            if old_hash == new_hash {
-                config.start()?;
-            }
+        if old_hash == new_hash {
+            config.start()?;
         }
+    }
 
     if container_inspect.is_some() {
         config.destroy()?;
