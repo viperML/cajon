@@ -175,14 +175,20 @@ impl Config {
 
     fn inspect_image(&self) -> Result<InspectImage> {
         let mut exists_cmd = Command::new("podman");
-        exists_cmd.args(["image", "exists"]);
+        exists_cmd.args(["image", "ls", "--quiet"]);
         exists_cmd.arg(&self.image);
-        exists_cmd.stdout(Stdio::null());
         exists_cmd.stderr(Stdio::null());
-        let st = exists_cmd.status()?;
+        let exists = exists_cmd
+            .output()
+            .map(|o| {
+                let s = String::from_utf8_lossy(&o.stdout);
+                let s = s.trim();
+                !s.is_empty()
+            })
+            .unwrap_or(false);
 
         // Pull image if doesn't exists locally
-        if !st.success() {
+        if !exists {
             let mut cmd = Command::new("podman");
             cmd.args(["image", "pull"]);
             cmd.arg(&self.image);
