@@ -1,3 +1,4 @@
+mod cajon_init;
 mod init;
 mod log;
 
@@ -8,6 +9,7 @@ use std::fs;
 use std::hash::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
@@ -308,13 +310,20 @@ impl Config {
             cmd.arg(arg);
         }
 
+        let cajon_init_path = cajon_init::load_cajon_init()?;
+        cmd.arg("--volume");
+        cmd.arg(format!("{}:/run/cajon-init:ro", cajon_init_path.display()));
+
         cmd.arg(&self.image);
+
+        // cmd.arg("/run/cajon-init");
 
         if let Some(ref script) = self.script {
             let shell_cmd = format!("{script}\nexec {}", image_cmd.join(" "));
             cmd.args(image_cmd);
             cmd.arg("-c");
             cmd.arg(shell_cmd);
+        } else {
         }
 
         print_command(&cmd);
@@ -411,6 +420,17 @@ impl Config {
 }
 
 fn main() -> Result<()> {
+    let argv0 = PathBuf::from(std::env::args().next().unwrap())
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(String::from);
+
+    if let Some(a) = argv0
+        && a == "cajon-init"
+    {
+        cajon_init::init();
+    }
+
     color_eyre::install()?;
 
     let cli = Cli::global();
