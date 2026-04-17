@@ -22,8 +22,32 @@ use color_eyre::eyre::bail;
 use mlua::LuaSerdeExt;
 use mlua::prelude::*;
 use serde::Deserialize;
+use serde::Deserializer;
 
 use crate::log::print_command;
+
+fn dedent(s: String) -> String {
+    textwrap::dedent(&s).trim().to_string()
+}
+
+fn dedent_string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    String::deserialize(d).map(dedent)
+}
+
+fn dedent_option_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(d).map(|o| o.map(dedent))
+}
+
+fn dedent_vec_string<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    Vec::<String>::deserialize(d).map(|v| v.into_iter().map(dedent).collect())
+}
+
+fn dedent_btreemap_string<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<BTreeMap<String, String>, D::Error> {
+    BTreeMap::<String, String>::deserialize(d)
+        .map(|m| m.into_iter().map(|(k, v)| (k, dedent(v))).collect())
+}
 
 fn default_true() -> bool {
     true
@@ -52,22 +76,25 @@ fn default_name() -> String {
 
 #[derive(Debug, Deserialize, Hash)]
 struct Config {
+    #[serde(deserialize_with = "dedent_string")]
     image: String,
     #[serde(default = "default_true")]
     mount_cwd: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "dedent_btreemap_string")]
     env: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "dedent_vec_string")]
     volumes: Vec<String>,
+    #[serde(default, deserialize_with = "dedent_option_string")]
     script: Option<String>,
+    #[serde(default, deserialize_with = "dedent_option_string")]
     cook_script: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "dedent_vec_string")]
     extra_args: Vec<String>,
     #[serde(default)]
     stateful: bool,
-    #[serde(default = "default_workdir")]
+    #[serde(default = "default_workdir", deserialize_with = "dedent_string")]
     workdir: String,
-    #[serde(default = "default_name")]
+    #[serde(default = "default_name", deserialize_with = "dedent_string")]
     name: String,
     #[serde(default = "default_true")]
     with_ssh: bool,
@@ -432,14 +459,6 @@ fn main() -> Result<()> {
         lua.from_value(lua.load(contents).eval()?)
             .wrap_err("parsing configuration")?
     };
-
-    if let Some(s) = config.cook_script.as_mut() {
-        *s = textwrap::dedent(s.as_str()).trim().to_string();
-    }
-
-    if let Some(s) = config.script.as_mut() {
-        *s = textwrap::dedent(s.as_str()).trim().to_string();
-    }
 
     let container_inspect = config.inspect_container()?;
     if let Some(ref i) = container_inspect
