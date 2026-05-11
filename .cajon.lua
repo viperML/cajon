@@ -14,9 +14,11 @@
 
 --- @type Config
 return {
-	image = "docker.io/library/debian:latest",
-	cook_script = [[
-    apt update -y
-    apt install -y x11-apps
-  ]],
+	image = "docker.io/fedora:latest",
+	volumes = {
+		"/run/user/10000/wayland-1:/tmp/wayland-1",
+	},
+	env = {
+		WAYLAND_DISPLAY = "wayland-1",
+	},
 }
