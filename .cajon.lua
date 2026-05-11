@@ -15,7 +15,11 @@
 --- @type Config
 return {
 	image = "docker.io/library/debian:latest",
+	env = {
+		DEBIAN_FRONTEND = "noninteractive",
+	},
 	cook_script = [[
+    cp -v ./readme.md /
     apt update -y
     apt install -y x11-apps
   ]],

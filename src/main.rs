@@ -117,6 +117,93 @@ impl Config {
         let hash = hasher.finish();
         format!("{hash:016x}")
     }
+
+    fn common_run_args(&self) -> Result<Vec<String>> {
+        let mut res: Vec<String> = vec![];
+
+        res.push("--interactive".into());
+        res.push("--tty".into());
+        res.push("--privileged".into());
+        res.push("--network".into());
+        res.push("host".into());
+
+        if self.mount_cwd {
+            res.push("--workdir".into());
+            res.push((&self.workdir).into());
+
+            let workdir = current_dir()?;
+            res.push("--volume".into());
+            res.push(format!("{}:{}", workdir.to_string_lossy(), &self.workdir));
+        }
+
+        for (k, v) in &self.env {
+            res.push("--env".into());
+            res.push(format!("{k}={v}"));
+        }
+
+        if self.with_ssh {
+            use owo_colors::OwoColorize;
+            match std::env::var("SSH_AUTH_SOCK") {
+                Err(_) => {
+                    eprintln!(
+                        "{} with_ssh is enabled, but SSH_AUTH_SOCK is not set",
+                        "error:".red()
+                    );
+                }
+                Ok(ssh_auth_sock) => {
+                    let new_ssh_auth_sock = "/run/ssh-agent";
+                    res.push("--volume".into());
+                    res.push(format!("{ssh_auth_sock}:{new_ssh_auth_sock}"));
+                    res.push("--env".into());
+                    res.push(format!("SSH_AUTH_SOCK={new_ssh_auth_sock}"));
+                }
+            }
+        }
+
+        if self.with_x11 {
+            use owo_colors::OwoColorize;
+            match std::env::var("DISPLAY") {
+                Err(_) => {
+                    eprintln!(
+                        "{} with_x11 is enabled, but DISPLAY is not set",
+                        "error:".red()
+                    );
+                }
+                Ok(display) => {
+                    res.push("--env".into());
+                    res.push(format!("DISPLAY={display}"));
+                    res.push("--volume".into());
+                    res.push("/tmp/.X11-unix:/tmp/.X11-unix".into());
+
+                    let xauthority = std::env::var("XAUTHORITY")
+                        .map(PathBuf::from)
+                        .ok()
+                        .unwrap_or_else(|| {
+                            PathBuf::from(std::env::var("HOME").unwrap()).join(".Xauthority")
+                        });
+
+                    if let Ok(true) = xauthority.try_exists() {
+                        let new_xauthority = "/tmp/.Xauthority";
+                        res.push("--env".into());
+                        res.push(format!("XAUTHORITY={new_xauthority}"));
+                        res.push("--volume".into());
+                        res.push(format!(
+                            "{}:{new_xauthority}",
+                            xauthority
+                                .to_str()
+                                .expect("Failed to convert Xauthority path to string"),
+                        ));
+                    }
+                }
+            }
+        }
+
+        for arg in &self.extra_args {
+            res.push(arg.clone());
+        }
+
+        return Ok(res);
+    }
 }
 
 impl Cli {
@@ -246,15 +333,7 @@ impl Config {
     fn run(&self, image_cmd: &[String]) -> Result<()> {
         let mut cmd = Command::new("podman");
 
-        cmd.args([
-            "run",
-            "--interactive",
-            "--tty",
-            "--network",
-            "host",
-            "--init",
-            "--privileged",
-        ]);
+        cmd.args(["run", "--init"]);
 
         if !self.stateful {
             cmd.arg("--rm");
@@ -263,83 +342,10 @@ impl Config {
             cmd.arg(format!("cajon.hash={}", self.runtime_hash()));
         }
 
-        if self.mount_cwd {
-            cmd.arg("--workdir");
-            cmd.arg(&self.workdir);
-
-            let workdir = current_dir()?;
-            cmd.arg("--volume");
-            cmd.arg(format!("{}:{}", workdir.to_string_lossy(), &self.workdir));
-        }
-
         cmd.arg("--name");
         cmd.arg(&self.name);
 
-        for (k, v) in &self.env {
-            cmd.arg("--env");
-            cmd.arg(format!("{k}={v}"));
-        }
-
-        if self.with_ssh {
-            use owo_colors::OwoColorize;
-            match std::env::var("SSH_AUTH_SOCK") {
-                Err(_) => {
-                    eprintln!(
-                        "{} with_ssh is enabled, but SSH_AUTH_SOCK is not set",
-                        "error:".red()
-                    );
-                }
-                Ok(ssh_auth_sock) => {
-                    let new_ssh_auth_sock = "/run/ssh-agent";
-                    cmd.arg("--volume");
-                    cmd.arg(format!("{ssh_auth_sock}:{new_ssh_auth_sock}"));
-                    cmd.arg("--env");
-                    cmd.arg(format!("SSH_AUTH_SOCK={new_ssh_auth_sock}"));
-                }
-            }
-        }
-
-        if self.with_x11 {
-            use owo_colors::OwoColorize;
-            match std::env::var("DISPLAY") {
-                Err(_) => {
-                    eprintln!(
-                        "{} with_x11 is enabled, but DISPLAY is not set",
-                        "error:".red()
-                    );
-                }
-                Ok(display) => {
-                    cmd.arg("--env");
-                    cmd.arg(format!("DISPLAY={display}"));
-                    cmd.arg("--volume");
-                    cmd.arg("/tmp/.X11-unix:/tmp/.X11-unix");
-
-                    let xauthority = std::env::var("XAUTHORITY")
-                        .map(PathBuf::from)
-                        .ok()
-                        .unwrap_or_else(|| {
-                            PathBuf::from(std::env::var("HOME").unwrap()).join(".Xauthority")
-                        });
-
-                    if let Ok(true) = xauthority.try_exists() {
-                        let new_xauthority = "/tmp/.Xauthority";
-                        cmd.arg("--env");
-                        cmd.arg(format!("XAUTHORITY={new_xauthority}"));
-                        cmd.arg("--volume");
-                        cmd.arg(format!(
-                            "{}:{new_xauthority}",
-                            xauthority
-                                .to_str()
-                                .expect("Failed to convert Xauthority path to string"),
-                        ));
-                    }
-                }
-            }
-        }
-
-        for arg in &self.extra_args {
-            cmd.arg(arg);
-        }
+        cmd.args(self.common_run_args()?);
 
         cmd.arg(&self.image);
 
@@ -400,19 +406,10 @@ impl Config {
         let cooking_name = format!("{}-cook", self.name);
 
         let mut cook_cmd = Command::new("podman");
-        cook_cmd.args([
-            "run",
-            "--interactive",
-            "--tty",
-            "--replace",
-            "--network",
-            "host",
-        ]);
+        cook_cmd.args(["run", "--replace"]);
         cook_cmd.arg("--name");
         cook_cmd.arg(&cooking_name);
-        for arg in &self.extra_args {
-            cook_cmd.arg(arg);
-        }
+        cook_cmd.args(self.common_run_args()?);
         cook_cmd.arg(&self.image);
         cook_cmd.args(["/bin/sh", "-c"]);
         cook_cmd.arg(cook_script);
