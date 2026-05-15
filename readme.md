@@ -45,4 +45,4 @@ Download the latest release of the binary: https://github.com/viperML/cajon/rele
 
 ---
 
-This is similar to [Distrobox](https://distrobox.it), but I found distrobox inurating so I rewrote it.
+This is similar to [Distrobox](https://distrobox.it), but I found distrobox infuriating so I rewrote it.
